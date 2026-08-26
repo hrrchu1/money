@@ -567,6 +567,16 @@
       </div>
       <div class="row">
         <span class="sign minus" aria-hidden="true">−</span>
+        <span class="name">적금</span>
+        <span class="amount-box"><input id="f_savings_me" inputmode="numeric" autocomplete="off" placeholder="0" aria-label="적금"><span class="won">원</span></span>
+      </div>
+      <div class="row">
+        <span class="sign minus" aria-hidden="true">−</span>
+        <span class="name">연금</span>
+        <span class="amount-box"><input id="f_pension_me" inputmode="numeric" autocomplete="off" placeholder="0" aria-label="연금"><span class="won">원</span></span>
+      </div>
+      <div class="row">
+        <span class="sign minus" aria-hidden="true">−</span>
         <span class="name">용돈</span>
         <span class="amount-box"><input id="f_pocket_me" inputmode="numeric" autocomplete="off" placeholder="0" aria-label="희진 용돈"><span class="won">원</span></span>
       </div>
@@ -626,11 +636,13 @@
     // 저장 데이터(v 배열)가 위치 기반이라 새 항목은 반드시 맨 뒤에 추가
     { id: 'f_etc_me',    label: '기타비용',     sign: -1, side: 'me', spend: true },
     { id: 'f_pocket_me', label: '용돈',         sign: -1, side: 'me', spend: true },
-    { id: 'f_pocket_hb', label: '용돈',         sign: -1, side: 'hb', spend: true }
+    { id: 'f_pocket_hb', label: '용돈',         sign: -1, side: 'hb', spend: true },
+    { id: 'f_savings_me', label: '적금',        sign: -1, side: 'me' },
+    { id: 'f_pension_me', label: '연금',        sign: -1, side: 'me' }
   ];
   // 요약 텍스트에 표시할 순서 (화면 배치와 동일하게)
   var SUMMARY_ORDER = ['f_salary', 'f_heejin', 'f_loan', 'f_borrow', 'f_shinhan', 'f_coupang',
-    'f_hana', 'f_pocket_me', 'f_etc_me', 'f_husband', 'f_starfield', 'f_pocket_hb', 'f_etc'];
+    'f_hana', 'f_savings_me', 'f_pension_me', 'f_pocket_me', 'f_etc_me', 'f_husband', 'f_starfield', 'f_pocket_hb', 'f_etc'];
   var LS_KEY = 'living-expenses-history-v1';
   var SYNC_LS_KEY = 'living-expenses-sync-id';
   var SUPABASE_URL = 'https://pbfgebrbvnemvragtoeh.supabase.co';
