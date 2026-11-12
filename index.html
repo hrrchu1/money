@@ -451,6 +451,32 @@
     max-width: calc(100vw - 2rem);
   }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .sync-chip.err { cursor: pointer; }
+  #pwDialog {
+    border: 1px solid var(--line);
+    border-radius: .875rem;
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow);
+    padding: 1.25rem;
+    width: min(20rem, calc(100vw - 2rem));
+  }
+  #pwDialog::backdrop { background: rgba(15, 21, 34, .55); }
+  #pwDialog h3 { margin: 0 0 .35rem; font-size: 1.1rem; }
+  #pwDialog p { margin: 0 0 .85rem; font-size: .85rem; color: var(--muted); }
+  #pwDialog p.bad { color: var(--minus); font-weight: 700; }
+  #pwDialog input {
+    display: block;
+    width: 100%;
+    margin-bottom: .5rem;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+    border-radius: .5rem;
+    padding: .55rem .7rem;
+    font: inherit;
+  }
+  #pwDialog button { width: 100%; margin-top: .35rem; }
   @media (prefers-reduced-motion: reduce) {
     #toast, button { transition: none; }
   }
@@ -619,6 +645,16 @@
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
+
+<dialog id="pwDialog">
+  <form method="dialog" id="pwForm">
+    <h3 id="pwTitle">비밀번호 입력</h3>
+    <p id="pwMsg"></p>
+    <input type="password" id="pwInput" autocomplete="current-password" placeholder="비밀번호" aria-label="비밀번호" required minlength="4">
+    <input type="password" id="pwConfirm" autocomplete="new-password" placeholder="비밀번호 확인" aria-label="비밀번호 확인">
+    <button class="primary" type="submit">확인</button>
+  </form>
+</dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -797,6 +833,12 @@
   /* ----- 실시간 동기화 (Supabase: RPC로만 접근, 저장 시 상대 기기에 즉시 푸시) ----- */
   var syncId = null;
   try { syncId = localStorage.getItem(SYNC_LS_KEY) || null; } catch (e) {}
+  // 서버가 비밀번호를 확인해야 기록을 주고받음 (le_put_all_pw). 이 기기에 한 번 입력하면 기억
+  var PW_LS_KEY = 'living-expenses-pw';
+  var syncPw = null;
+  try { syncPw = localStorage.getItem(PW_LS_KEY) || null; } catch (e) {}
+  var pwAsking = false;
+  var pwIsNew = false;
   var syncBusy = false;
   var syncPending = false;
   var rtChannel = null;
@@ -830,18 +872,60 @@
       },
       body: JSON.stringify(args)
     }).then(function (r) {
-      if (!r.ok) throw new Error('rpc-failed');
-      return r.json();
+      if (r.ok) return r.json();
+      return r.json().catch(function () { return {}; }).then(function (b) {
+        throw new Error(b.message === 'bad-pw' ? 'bad-pw' : 'rpc-failed');
+      });
     });
   }
+
+  function askPw(wrong) {
+    var d = $('pwDialog');
+    if (!syncId || pwAsking || d.open) return;
+    pwAsking = true;
+    rpc('le_pw_exists', { code: syncId })
+      .then(function (has) {
+        pwIsNew = !has;
+        $('pwTitle').textContent = has ? '비밀번호 입력' : '비밀번호 만들기';
+        $('pwConfirm').style.display = has ? 'none' : '';
+        var msg = $('pwMsg');
+        msg.className = wrong ? 'bad' : '';
+        msg.textContent = wrong ? '비밀번호가 맞지 않아요. 다시 입력해 주세요.'
+          : has ? '이 기기에서 처음 열었어요. 한 번만 입력하면 기억해요.'
+          : '기록을 보려면 비밀번호가 필요해요. 처음 한 번만 정해요. 잊으면 되찾을 수 없어요.';
+        d.showModal();
+        $('pwInput').focus();
+      })
+      .catch(function () { setChip('err', '연결 안 됨'); })
+      .then(function () { pwAsking = false; });
+  }
+
+  $('pwForm').addEventListener('submit', function (ev) {
+    var p = $('pwInput').value;
+    var bad = p.length < 4 ? '4자 이상 입력해 주세요.'
+      : (pwIsNew && p !== $('pwConfirm').value) ? '두 번 입력한 비밀번호가 달라요.' : '';
+    if (bad) {
+      ev.preventDefault();
+      $('pwMsg').className = 'bad';
+      $('pwMsg').textContent = bad;
+      return;
+    }
+    syncPw = p;
+    try { localStorage.setItem(PW_LS_KEY, p); } catch (e) {}
+    $('pwInput').value = '';
+    $('pwConfirm').value = '';
+    syncNow(false);
+  });
+  $('syncChip').addEventListener('click', function () { if (!syncPw) askPw(false); });
 
   // 서버가 월별 최신본만 남기고 병합한 결과를 돌려줌 → 그게 항상 정답
   function syncNow(notify) {
     if (!syncId) { setChip('', '동기화 꺼짐'); return; }
+    if (!syncPw) { setChip('err', '비밀번호 필요 · 눌러서 입력'); return; }
     if (syncBusy) { syncPending = true; return; }
     syncBusy = true;
     setChip('', '동기화 중…');
-    rpc('le_put_all', { code: syncId, doc: loadHistory() })
+    rpc('le_put_all_pw', { code: syncId, pw: syncPw, doc: loadHistory() })
       .then(function (cloud) {
         cloud = cloud || {};
         if (JSON.stringify(cloud) !== JSON.stringify(loadHistory())) {
@@ -855,7 +939,13 @@
           String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'));
         if (notify) broadcastSync();
       })
-      .catch(function () { setChip('err', '연결 안 됨'); })
+      .catch(function (e) {
+        if (e.message !== 'bad-pw') { setChip('err', '연결 안 됨'); return; }
+        syncPw = null;
+        try { localStorage.removeItem(PW_LS_KEY); } catch (x) {}
+        setChip('err', '비밀번호 필요 · 눌러서 입력');
+        askPw(true);
+      })
       .then(function () {
         syncBusy = false;
         if (syncPending) { syncPending = false; syncNow(false); }
@@ -1315,4 +1405,5 @@
   maybeFillForm();
   ensureRealtime();
   syncNow(false);
+  if (syncId && !syncPw) askPw(false);
 </script>
